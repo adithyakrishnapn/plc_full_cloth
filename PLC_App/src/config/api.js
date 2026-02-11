@@ -3,19 +3,25 @@
  * Centralized configuration for API endpoints
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8080'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:5000'
 
 export const API_CONFIG = {
   // REST API
   BASE_URL: API_BASE,
   ENDPOINTS: {
-    DASHBOARD: `${API_BASE}/api/dashboard`,
-    PLC_DATA: `${API_BASE}/api/plc-data`,
-    PLC_DATA_LATEST: `${API_BASE}/api/plc-data/latest`,
-    PRODUCTION_LOGS: `${API_BASE}/api/production-logs`,
-    ALERTS: `${API_BASE}/api/alerts`,
-    ALERTS_ACTIVE: `${API_BASE}/api/alerts/active`,
+    LATEST: `${API_BASE}/api/latest`,
+    PROCESS_CURRENT: `${API_BASE}/api/process/current`,
+    PROCESS_HISTORY: `${API_BASE}/api/process/history`,
+    DEFECTS: `${API_BASE}/api/defects/current`,
+    STATS: `${API_BASE}/api/stats/today`,
+    // Legacy mappings (best effort)
+    DASHBOARD: `${API_BASE}/api/stats/today`,
+    PLC_DATA: `${API_BASE}/api/process/history`,
+    PLC_DATA_LATEST: `${API_BASE}/api/latest`,
+    PRODUCTION_LOGS: `${API_BASE}/api/process/history`,
+    ALERTS: `${API_BASE}/api/defects/current`,
+    ALERTS_ACTIVE: `${API_BASE}/api/defects/current`,
     HEALTH: `${API_BASE}/health`,
   },
 
