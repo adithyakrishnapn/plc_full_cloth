@@ -1,98 +1,97 @@
-import mongoose from 'mongoose'
-import dotenv from 'dotenv'
+import mongoose from 'mongoose';
+import { connectDb } from './config/db.js';
+import Base from './models/Base.js';
+import Telemetry from './models/Telemetry.js';
+import Process from './models/Process.js';
+import Defect from './models/Defect.js';
 
-dotenv.config()
-
-const mongoUri = process.env.MONGODB_URI;
-
-// ==================== SCHEMAS ====================
-
-const plcDataSchema = new mongoose.Schema({
-  machineStatus: String,
-  shiftWorkingHours: Number,
-  totalUptimeHours: Number,
-  todayProduction: Number,
-  totalProduction: Number,
-  fabricLengthMeters: Number,
-  machineSpeed: Number,
-  utilizationPercent: Number,
-  downtimeMinutes: Number,
-  alarmCode: Number,
-  timestamp: { type: Date, default: Date.now },
-}, { timestamps: true })
-
-const ProductionLogSchema = new mongoose.Schema({
-  date: Date,
-  batch: String,
-  length: Number,
-  defects: Number,
-  status: String,
-  timestamp: { type: Date, default: Date.now },
-})
-
-// ==================== MODELS ====================
-
-const PLCData = mongoose.model('PLCData', plcDataSchema)
-const ProductionLog = mongoose.model('ProductionLog', ProductionLogSchema)
-
-// ==================== SEED DATA ====================
-
-async function seedDatabase() {
+const seedData = async () => {
   try {
-    await mongoose.connect(mongoUri)
-    console.log('Connected to MongoDB')
+    await connectDb();
+    console.log('Connected to MongoDB for seeding...');
 
     // Clear existing data
-    await PLCData.deleteMany({})
-    await ProductionLog.deleteMany({})
-    console.log('Cleared existing data')
+    await Base.deleteMany({});
+    console.log('Cleared existing PLC data.');
 
-    // Generate 6 months of hourly PLC data
-    const plcDataPoints = []
-    const now = new Date()
-    for (let i = 180 * 24; i >= 0; i--) {
-      const date = new Date(now.getTime() - i * 60 * 60 * 1000)
-      plcDataPoints.push({
-        machineStatus: Math.random() > 0.1 ? 'RUNNING' : 'IDLE',
-        shiftWorkingHours: Math.random() * 8 + 4,
-        totalUptimeHours: Math.random() * 1000 + 500,
-        todayProduction: Math.floor(Math.random() * 100 + 20),
-        totalProduction: Math.floor(Math.random() * 50000 + 10000),
-        fabricLengthMeters: Math.random() * 100 + 50,
-        machineSpeed: Math.random() * 50 + 30,
-        utilizationPercent: Math.floor(Math.random() * 40 + 60),
-        downtimeMinutes: Math.random() * 30,
-        alarmCode: Math.random() > 0.95 ? Math.floor(Math.random() * 10) : 0,
-        timestamp: date,
-      })
-    }
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const twoHoursAgo = new Date(now.getTime() - 120 * 60 * 1000);
 
-    const savedPlcData = await PLCData.insertMany(plcDataPoints)
-    console.log(`✓ Inserted ${savedPlcData.length} PLC data points`)
+    // 1. Create a specific past process
+    const pastProcess = await Process.create({
+      processId: 'PROC-1001',
+      textileId: 'TEX-A1',
+      startTime: twoHoursAgo,
+      endTime: oneHourAgo,
+      durationMinutes: 60,
+      production: { fabricProcessed: 1200 },
+      fabricProcessed: 1200 // flattened for easier access if needed
+    });
 
-    // Generate production logs with unique batch IDs
-    const logRows = []
-    for (let i = 0; i < 100; i++) {
-      const batchNum = 24061 + i
-      logRows.push({
-        date: new Date(now.getTime() - Math.random() * 180 * 24 * 60 * 60 * 1000),
-        batch: `FX-${batchNum}`,
-        length: Math.floor(Math.random() * 150 + 50),
-        defects: Math.random() > 0.8 ? Math.floor(Math.random() * 5) : 0,
-        status: Math.random() > 0.8 ? 'CHECK' : 'OK',
-        timestamp: new Date(),
-      })
-    }
+    // 2. Create the current running process
+    const currentProcess = await Process.create({
+      processId: 'PROC-1002',
+      textileId: 'TEX-A2',
+      startTime: oneHourAgo,
+      endTime: null, // Still running
+      durationMinutes: null,
+      production: { fabricProcessed: 500 },
+      fabricProcessed: 500 // partial count
+    });
 
-    const savedLogs = await ProductionLog.insertMany(logRows)
-    console.log(`✓ Inserted ${savedLogs.length} production logs`)
+    // 3. Insert Telemetry Data (Historical & Latest)
+    // Some data for past process
+    await Telemetry.create({
+      machineStatus: 'Running',
+      machineStatusCode: 1,
+      totalProduction: 1000,
+      fabricLength: 1000,
+      alarmCode: 0,
+      machineRunning: true,
+      processStart: twoHoursAgo,
+      processId: 'PROC-1001',
+      textileId: 'TEX-A1',
+      timestamp: new Date(twoHoursAgo.getTime() + 30 * 60 * 1000)
+    });
 
-    console.log('\n✓ Database seeding completed successfully!')
-    process.exit(0)
+    // Latest telemetry for current process
+    await Telemetry.create({
+      machineStatus: 'Running',
+      machineStatusCode: 1,
+      totalProduction: 2250, // Cumulative
+      fabricLength: 500, // Current textle length
+      alarmCode: 0,
+      machineRunning: true,
+      processStart: oneHourAgo,
+      processId: 'PROC-1002', // Current
+      textileId: 'TEX-A2',
+      timestamp: now
+    });
+
+    // 4. Insert Defects
+    await Defect.create({
+      processId: 'PROC-1001',
+      textileId: 'TEX-A1',
+      count: 1,
+      lengthAtDetection: 150.5,
+      timestamp: new Date(twoHoursAgo.getTime() + 15 * 60 * 1000)
+    });
+
+    await Defect.create({
+      processId: 'PROC-1002',
+      textileId: 'TEX-A2',
+      count: 1,
+      lengthAtDetection: 45.2,
+      timestamp: new Date(oneHourAgo.getTime() + 10 * 60 * 1000)
+    });
+
+    console.log('✅ Seed data inserted successfully');
+    process.exit(0);
   } catch (err) {
-    console.error('Seeding error:', err)
-    process.exit(1)
+    console.error('❌ Seeding failed:', err);
+    process.exit(1);
   }
-}
+};
 
-seedDatabase()
+seedData();
