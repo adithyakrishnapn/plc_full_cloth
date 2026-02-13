@@ -79,9 +79,13 @@ export const dashboardReducer = (state, action) => {
       }
 
     case 'UPDATE_ALL_DATA':
+      console.log('Updating dashboard with:', action.payload)
       return {
         ...state,
-        ...action.payload,
+        stats: action.payload.stats || state.stats,
+        runtimePoints: action.payload.runtimePoints || state.runtimePoints,
+        productionBars: action.payload.productionBars || state.productionBars,
+        logRows: action.payload.logRows || state.logRows,
         lastUpdated: new Date().toLocaleString(),
       }
 

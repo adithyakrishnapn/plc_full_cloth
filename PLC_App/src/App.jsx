@@ -1,12 +1,19 @@
-import React from 'react';
-import Dashboard from './components/Dashboard';
+import React from 'react'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { DashboardProvider } from './context/DashboardContext'
+import Layout from './layouts/layout'
+import Dashboard from './pages/Dashboard'
 
-function App() {
+export default function App() {
   return (
-    <div className="App bg-[#0b0f1a] min-h-screen text-white">
-      <Dashboard />
-    </div>
-  );
+    <DashboardProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<Dashboard />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </DashboardProvider>
+  )
 }
-
-export default App;

@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
+import API_CONFIG from '../config/api'
 
 const products = [
 	{ id: 'p1', name: 'FoldX Alpha-1', category: 'Premium' },
@@ -29,6 +30,71 @@ function FakeQRCode({ size = 44 }) {
 }
 
 export default function Sidebar() {
+	const [latestProcess, setLatestProcess] = useState(null)
+	const [qrCodeDataUrl, setQrCodeDataUrl] = useState('')
+
+	useEffect(() => {
+		const fetchLatestProcess = async () => {
+			try {
+				const response = await fetch(API_CONFIG.ENDPOINTS.PROCESS_LATEST)
+				if (response.ok) {
+					const data = await response.json()
+					setLatestProcess(data)
+				}
+			} catch (err) {
+				console.error('Failed to fetch latest process:', err)
+			}
+		}
+
+		fetchLatestProcess()
+		// Refresh every 10 seconds to pick up newly completed processes
+		const interval = setInterval(fetchLatestProcess, 10000)
+		return () => clearInterval(interval)
+	}, [])
+
+	useEffect(() => {
+		const generateQR = async () => {
+			// Only generate QR code if process has endTime (is completed)
+			if (!latestProcess?.processId || !latestProcess?.endTime) {
+				setQrCodeDataUrl('')
+				return
+			}
+
+			try {
+				const QRCode = (await import('qrcode')).default
+				const url = `${API_CONFIG.BASE_URL}/api/reports/process/${encodeURIComponent(latestProcess.processId)}`
+				const dataUrl = await QRCode.toDataURL(url, {
+					width: 88,
+					margin: 1,
+					color: {
+						dark: '#94a3b8',
+						light: '#1e293b',
+					},
+				})
+				setQrCodeDataUrl(dataUrl)
+			} catch (err) {
+				console.error('QR generation failed:', err)
+			}
+		}
+
+		generateQR()
+	}, [latestProcess])
+
+	const handleQRDownload = () => {
+		if (!latestProcess?.processId) return
+		try {
+			const url = `${API_CONFIG.BASE_URL}/api/reports/process/${encodeURIComponent(latestProcess.processId)}`
+			const link = document.createElement('a')
+			link.href = url
+			link.setAttribute('download', `process-${latestProcess.processId}.pdf`)
+			document.body.appendChild(link)
+			link.click()
+			link.remove()
+		} catch (err) {
+			console.error('Download failed:', err)
+		}
+	}
+
 	return (
 		<aside className="hidden min-h-screen w-72 border-r border-white/5 bg-[#0c1222] px-6 py-8 lg:block">
 			<div className="flex items-center gap-3 text-xl font-bold tracking-tight text-slate-100">
@@ -62,9 +128,37 @@ export default function Sidebar() {
 
 			<div className="mt-auto pt-10">
 				<div className="rounded-2xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10 p-5 border border-indigo-500/10">
-					<p className="text-[10px] leading-relaxed text-slate-400">
-						Scanning QR codes provides instant access to machine telemetry and maintenance logs.
-					</p>
+					{qrCodeDataUrl ? (
+						<div className="flex flex-col items-center gap-3">
+							<button
+								onClick={handleQRDownload}
+								className="rounded-lg hover:opacity-80 transition cursor-pointer bg-white p-2"
+							>
+								<img src={qrCodeDataUrl} alt="Latest Process QR" className="rounded" />
+							</button>
+							<p className="text-[10px] text-center leading-relaxed text-slate-300 font-medium">
+								Latest Completed: {latestProcess?.processId || 'N/A'}
+							</p>
+							<p className="text-[10px] text-center leading-relaxed text-slate-500">
+								Scan or click to download PDF report
+							</p>
+							<button
+								onClick={handleQRDownload}
+								className="w-full mt-2 text-[10px] bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded-lg py-2 px-3 font-medium transition"
+							>
+								Download PDF
+							</button>
+						</div>
+					) : (
+						<div className="flex flex-col gap-2 text-center">
+							<p className="text-[10px] leading-relaxed text-slate-400">
+								No completed processes yet
+							</p>
+							<p className="text-[10px] leading-relaxed text-slate-500">
+								QR codes appear here once a process completes
+							</p>
+						</div>
+					)}
 				</div>
 			</div>
 		</aside>

@@ -3,7 +3,13 @@
  * Centralized configuration for API endpoints
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const normalizeApiRoot = (value) => {
+  const trimmed = value.replace(/\/+$/, '')
+  return trimmed.endsWith('/api') ? trimmed.slice(0, -4) : trimmed
+}
+
+const API_ROOT = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_BASE = normalizeApiRoot(API_ROOT)
 const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:5000'
 
 export const API_CONFIG = {
@@ -12,11 +18,14 @@ export const API_CONFIG = {
   ENDPOINTS: {
     LATEST: `${API_BASE}/api/latest`,
     PROCESS_CURRENT: `${API_BASE}/api/process/current`,
+    PROCESS_LATEST: `${API_BASE}/api/process/latest`,
     PROCESS_HISTORY: `${API_BASE}/api/process/history`,
     DEFECTS: `${API_BASE}/api/defects/current`,
     STATS: `${API_BASE}/api/stats/today`,
+    DASHBOARD: `${API_BASE}/api/dashboard`,
+    REPORT_LATEST: `${API_BASE}/api/reports/latest`,
+    REPORT_RANGE: `${API_BASE}/api/reports/range`,
     // Legacy mappings (best effort)
-    DASHBOARD: `${API_BASE}/api/stats/today`,
     PLC_DATA: `${API_BASE}/api/process/history`,
     PLC_DATA_LATEST: `${API_BASE}/api/latest`,
     PRODUCTION_LOGS: `${API_BASE}/api/process/history`,

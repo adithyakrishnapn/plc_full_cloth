@@ -6,6 +6,8 @@ export default function RuntimeChart({ points = [] }) {
   const { width } = useResizeObserver(containerRef)
   const hasPoints = points && points.length > 0
 
+  console.log('RuntimeChart received points:', points, 'hasPoints:', hasPoints)
+
   // Use measured width or a sensible fallback during initial render
   const chartWidth = width || 600
   const chartHeight = 256 // Matches h-64 (16rem)
@@ -79,7 +81,7 @@ export default function RuntimeChart({ points = [] }) {
             />
             {chartPoints.map((point, index) => (
               <circle
-                key={point.label}
+                key={`circle-${index}`}
                 cx={point._x}
                 cy={point._y}
                 r={index === chartPoints.length - 1 ? 5 : 3}
@@ -93,7 +95,7 @@ export default function RuntimeChart({ points = [] }) {
                 const labelStep = Math.max(1, Math.floor(chartPoints.length / 6))
                 if (index % labelStep !== 0 && index !== chartPoints.length - 1) return null
                 return (
-                  <text key={point.label} x={point._x} y={chartHeight - 15} textAnchor="middle">
+                  <text key={`label-${index}`} x={point._x} y={chartHeight - 15} textAnchor="middle">
                     {point.label}
                   </text>
                 )

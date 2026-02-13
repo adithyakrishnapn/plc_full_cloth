@@ -15,76 +15,84 @@ const seedData = async () => {
     console.log('Cleared existing PLC data.');
 
     const now = new Date();
+
+    // Create processes across last 6 months for monthly production chart
+    const processHistory = [];
+    for (let monthOffset = 5; monthOffset >= 0; monthOffset--) {
+      const processDate = new Date(now.getFullYear(), now.getMonth() - monthOffset, 15);
+      const numProcesses = 3 + Math.floor(Math.random() * 3); // 3-5 processes per month
+      
+      for (let i = 0; i < numProcesses; i++) {
+        const startTime = new Date(processDate.getTime() + i * 8 * 60 * 60 * 1000);
+        const endTime = new Date(startTime.getTime() + (2 + Math.random()) * 60 * 60 * 1000);
+        const fabricProcessed = 800 + Math.floor(Math.random() * 600); // 800-1400m
+        
+        processHistory.push({
+          processId: `PROC-${processDate.getFullYear()}${String(processDate.getMonth()+1).padStart(2,'0')}-${String(i+1).padStart(3,'0')}`,
+          textileId: `TEX-${String.fromCharCode(65 + i)}${monthOffset}`,
+          startTime,
+          endTime,
+          durationMinutes: (endTime - startTime) / 60000,
+          production: { fabricProcessed },
+          fabricProcessed
+        });
+      }
+    }
+
+    // Create current running process (last hour)
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-    const twoHoursAgo = new Date(now.getTime() - 120 * 60 * 1000);
-
-    // 1. Create a specific past process
-    const pastProcess = await Process.create({
-      processId: 'PROC-1001',
-      textileId: 'TEX-A1',
-      startTime: twoHoursAgo,
-      endTime: oneHourAgo,
-      durationMinutes: 60,
-      production: { fabricProcessed: 1200 },
-      fabricProcessed: 1200 // flattened for easier access if needed
-    });
-
-    // 2. Create the current running process
-    const currentProcess = await Process.create({
-      processId: 'PROC-1002',
-      textileId: 'TEX-A2',
+    processHistory.push({
+      processId: 'PROC-CURRENT',
+      textileId: 'TEX-CURRENT',
       startTime: oneHourAgo,
       endTime: null, // Still running
       durationMinutes: null,
-      production: { fabricProcessed: 500 },
-      fabricProcessed: 500 // partial count
+      production: { fabricProcessed: 450 },
+      fabricProcessed: 450
     });
 
-    // 3. Insert Telemetry Data (Historical & Latest)
-    // Some data for past process
-    await Telemetry.create({
-      machineStatus: 'Running',
-      machineStatusCode: 1,
-      totalProduction: 1000,
-      fabricLength: 1000,
-      alarmCode: 0,
-      machineRunning: true,
-      processStart: twoHoursAgo,
-      processId: 'PROC-1001',
-      textileId: 'TEX-A1',
-      timestamp: new Date(twoHoursAgo.getTime() + 30 * 60 * 1000)
-    });
+    await Process.insertMany(processHistory);
+    console.log(`Created ${processHistory.length} processes`);
 
-    // Latest telemetry for current process
-    await Telemetry.create({
-      machineStatus: 'Running',
-      machineStatusCode: 1,
-      totalProduction: 2250, // Cumulative
-      fabricLength: 500, // Current textle length
-      alarmCode: 0,
-      machineRunning: true,
-      processStart: oneHourAgo,
-      processId: 'PROC-1002', // Current
-      textileId: 'TEX-A2',
-      timestamp: now
-    });
+    // Create telemetry data for last 12 hours
+    const telemetryData = [];
+    for (let i = 0; i < 12; i++) {
+      const timestamp = new Date(now.getTime() - (12 - i) * 60 * 60 * 1000);
+      telemetryData.push({
+        machineStatus: i % 3 === 0 ? 'Stopped' : 'Running',
+        machineStatusCode: i % 3 === 0 ? 0 : 1,
+        totalProduction: 1800 + i * 150,
+        fabricLength: 400 + i * 50,
+        alarmCode: 0,
+        machineRunning: i % 3 !== 0,
+        processStart: oneHourAgo,
+        processId: i < 6 ? `PROC-${processHistory[0].processId}` : 'PROC-CURRENT',
+        textileId: i < 6 ? processHistory[0].textileId : 'TEX-CURRENT',
+        timestamp
+      });
+    }
 
-    // 4. Insert Defects
-    await Defect.create({
-      processId: 'PROC-1001',
-      textileId: 'TEX-A1',
-      count: 1,
-      lengthAtDetection: 150.5,
-      timestamp: new Date(twoHoursAgo.getTime() + 15 * 60 * 1000)
-    });
+    await Telemetry.insertMany(telemetryData);
+    console.log(`Created ${telemetryData.length} telemetry records`);
 
-    await Defect.create({
-      processId: 'PROC-1002',
-      textileId: 'TEX-A2',
-      count: 1,
-      lengthAtDetection: 45.2,
-      timestamp: new Date(oneHourAgo.getTime() + 10 * 60 * 1000)
-    });
+    // Create some defects
+    await Defect.create([
+      {
+        processId: processHistory[0].processId,
+        textileId: processHistory[0].textileId,
+        count: 1,
+        lengthAtDetection: 150.5,
+        timestamp: processHistory[0].startTime
+      },
+      {
+        processId: 'PROC-CURRENT',
+        textileId: 'TEX-CURRENT',
+        count: 1,
+        lengthAtDetection: 45.2,
+        timestamp: new Date(oneHourAgo.getTime() + 10 * 60 * 1000)
+      }
+    ]);
+    console.log('Created defect records');
 
     console.log('✅ Seed data inserted successfully');
     process.exit(0);

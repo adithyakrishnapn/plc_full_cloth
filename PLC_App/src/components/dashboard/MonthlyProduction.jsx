@@ -5,11 +5,7 @@ export default function MonthlyProduction({ bars = [] }) {
   const maxProduction = values.length ? Math.max(...values) : 0
   const hasData = maxProduction > 0
 
-  // Debug: log what the chart receives so we can verify data visually in DevTools
-  if (process.env.NODE_ENV === 'development') {
-    // eslint-disable-next-line no-console
-    console.log('[MonthlyProduction] bars:', bars, 'maxProduction:', maxProduction)
-  }
+  console.log('MonthlyProduction received bars:', bars, 'hasData:', hasData, 'maxProduction:', maxProduction)
 
   return (
     <div className="rounded-2xl border border-white/5 bg-white/5 p-5 shadow-[0_12px_40px_rgba(2,6,23,0.55)]">

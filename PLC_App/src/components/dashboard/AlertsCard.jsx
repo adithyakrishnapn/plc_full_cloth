@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import API_CONFIG from '../../config/api'
 
 export default function AlertsCard() {
   const [alerts, setAlerts] = useState([])
@@ -8,8 +9,7 @@ export default function AlertsCard() {
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
-        const response = await fetch(`${apiUrl}/api/alerts/active`)
+        const response = await fetch(`${API_CONFIG.BASE_URL}/api/alerts/active`)
         const data = await response.json()
         if (Array.isArray(data)) {
           setAlerts(data)

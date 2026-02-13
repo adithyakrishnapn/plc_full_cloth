@@ -11,6 +11,12 @@ import LastUpdated from '../components/dashboard/LastUpdated'
 export default function Dashboard() {
   const { state, isConnected } = useDashboardData()
 
+  console.log('Dashboard state:', state)
+  console.log('Stats:', state.stats)
+  console.log('Runtime points:', state.runtimePoints)
+  console.log('Production bars:', state.productionBars)
+  console.log('Log rows:', state.logRows)
+
   return (
     <div className="space-y-6">
       {!isConnected && (

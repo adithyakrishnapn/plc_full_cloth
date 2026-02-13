@@ -1,4 +1,5 @@
 import React, { createContext, useReducer, useRef, useEffect } from 'react'
+import { io } from 'socket.io-client'
 import { dashboardReducer, initialState } from '../utils/dashboardReducer'
 import API_CONFIG from '../config/api'
 
@@ -7,105 +8,78 @@ export const DashboardContext = createContext()
 export function DashboardProvider({ children }) {
   const [state, dispatch] = useReducer(dashboardReducer, initialState)
   const socketRef = useRef(null)
-  const reconnectTimeoutRef = useRef(null)
 
   useEffect(() => {
     const fetchInitialDashboard = async () => {
       try {
         const response = await fetch(API_CONFIG.ENDPOINTS.DASHBOARD)
-        if (!response.ok) return
+        if (!response.ok) {
+          console.error('Dashboard fetch failed with status:', response.status)
+          return
+        }
         const data = await response.json()
+        console.log('Dashboard data received:', data)
         dispatch({ type: 'UPDATE_ALL_DATA', payload: data })
       } catch (error) {
         console.error('Failed to fetch initial dashboard data:', error)
       }
     }
 
-    const connectWebSocket = () => {
-      try {
-        // Connect to WebSocket server
-        const wsUrl = API_CONFIG.WS_URL || 'ws://localhost:8080/dashboard'
-        socketRef.current = new WebSocket(wsUrl)
+    // Fetch data immediately on mount
+    fetchInitialDashboard()
 
-        socketRef.current.onopen = () => {
-          console.log('WebSocket connected')
+    const connectSocket = () => {
+      try {
+        const socketUrl = API_CONFIG.BASE_URL
+        socketRef.current = io(socketUrl, {
+          transports: ['websocket'],
+          reconnection: true,
+          reconnectionAttempts: 10,
+          reconnectionDelay: 1000,
+          autoConnect: true,
+        })
+
+        socketRef.current.on('connect', () => {
+          console.log('Socket.IO connected')
           dispatch({ type: 'SET_CONNECTED', payload: true })
           fetchInitialDashboard()
-        }
+        })
 
-        socketRef.current.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data)
-            handleMessage(message)
-          } catch (error) {
-            console.error('Failed to parse WebSocket message:', error)
-          }
-        }
-
-        socketRef.current.onerror = (error) => {
-          console.error('WebSocket error:', error)
+        socketRef.current.on('disconnect', () => {
+          console.log('Socket.IO disconnected')
           dispatch({ type: 'SET_CONNECTED', payload: false })
-        }
+        })
 
-        socketRef.current.onclose = () => {
-          console.log('WebSocket disconnected')
+        socketRef.current.on('connect_error', (error) => {
+          console.error('Socket.IO error:', error)
           dispatch({ type: 'SET_CONNECTED', payload: false })
-          // Reconnect after 3 seconds
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000)
-        }
+        })
+
+        socketRef.current.on('telemetry_update', fetchInitialDashboard)
+        socketRef.current.on('process_started', fetchInitialDashboard)
+        socketRef.current.on('process_ended', fetchInitialDashboard)
+        socketRef.current.on('defect_detected', fetchInitialDashboard)
       } catch (error) {
-        console.error('Failed to connect WebSocket:', error)
+        console.error('Failed to connect Socket.IO:', error)
       }
     }
 
-    const handleMessage = (message) => {
-      const { type, payload } = message
-
-      switch (type) {
-        case 'UPDATE_STATS':
-          dispatch({ type: 'UPDATE_STATS', payload: payload.stats })
-          break
-
-        case 'UPDATE_RUNTIME':
-          dispatch({ type: 'UPDATE_RUNTIME_POINTS', payload: payload.points })
-          break
-
-        case 'UPDATE_PRODUCTION':
-          dispatch({ type: 'UPDATE_PRODUCTION_BARS', payload: payload.bars })
-          break
-
-        case 'UPDATE_LOG':
-          dispatch({ type: 'UPDATE_LOG_ROWS', payload: payload.rows })
-          break
-
-        case 'UPDATE_SINGLE_STAT':
-          dispatch({ type: 'UPDATE_SINGLE_STAT', payload: payload })
-          break
-
-        case 'UPDATE_ALL':
-          dispatch({ type: 'UPDATE_ALL_DATA', payload: payload })
-          break
-
-        default:
-          console.warn('Unknown message type:', type)
-      }
-    }
-
-    connectWebSocket()
+    connectSocket()
 
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
       if (socketRef.current) {
-        socketRef.current.close()
+        socketRef.current.off('telemetry_update', fetchInitialDashboard)
+        socketRef.current.off('process_started', fetchInitialDashboard)
+        socketRef.current.off('process_ended', fetchInitialDashboard)
+        socketRef.current.off('defect_detected', fetchInitialDashboard)
+        socketRef.current.disconnect()
       }
     }
   }, [])
 
   const sendMessage = (message) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify(message))
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('client_message', message)
     } else {
       console.warn('WebSocket is not connected')
     }
