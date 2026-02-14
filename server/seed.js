@@ -16,27 +16,23 @@ const seedData = async () => {
 
     const now = new Date();
 
-    // Create processes across last 6 months for monthly production chart
+    // Create processes for today only
     const processHistory = [];
-    for (let monthOffset = 5; monthOffset >= 0; monthOffset--) {
-      const processDate = new Date(now.getFullYear(), now.getMonth() - monthOffset, 15);
-      const numProcesses = 3 + Math.floor(Math.random() * 3); // 3-5 processes per month
-      
-      for (let i = 0; i < numProcesses; i++) {
-        const startTime = new Date(processDate.getTime() + i * 8 * 60 * 60 * 1000);
-        const endTime = new Date(startTime.getTime() + (2 + Math.random()) * 60 * 60 * 1000);
-        const fabricProcessed = 800 + Math.floor(Math.random() * 600); // 800-1400m
-        
-        processHistory.push({
-          processId: `PROC-${processDate.getFullYear()}${String(processDate.getMonth()+1).padStart(2,'0')}-${String(i+1).padStart(3,'0')}`,
-          textileId: `TEX-${String.fromCharCode(65 + i)}${monthOffset}`,
-          startTime,
-          endTime,
-          durationMinutes: (endTime - startTime) / 60000,
-          production: { fabricProcessed },
-          fabricProcessed
-        });
-      }
+    const processesToday = 6;
+    for (let i = 0; i < processesToday; i++) {
+      const startTime = new Date(now.getTime() - (processesToday - i + 2) * 2 * 60 * 60 * 1000);
+      const endTime = new Date(startTime.getTime() + (1.5 + Math.random()) * 60 * 60 * 1000);
+      const fabricProcessed = 800 + Math.floor(Math.random() * 600); // 800-1400m
+
+      processHistory.push({
+        processId: `PROC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(i + 1).padStart(3, '0')}`,
+        textileId: `TEX-${String.fromCharCode(65 + i)}`,
+        startTime,
+        endTime,
+        durationMinutes: (endTime - startTime) / 60000,
+        production: { fabricProcessed },
+        fabricProcessed
+      });
     }
 
     // Create current running process (last hour)
@@ -54,10 +50,14 @@ const seedData = async () => {
     await Process.insertMany(processHistory);
     console.log(`Created ${processHistory.length} processes`);
 
-    // Create telemetry data for last 12 hours
+    // Create telemetry data for today only
     const telemetryData = [];
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const rangeMs = Math.max(1, now.getTime() - startOfDay.getTime());
+    const stepMs = rangeMs / 12;
     for (let i = 0; i < 12; i++) {
-      const timestamp = new Date(now.getTime() - (12 - i) * 60 * 60 * 1000);
+      const timestamp = new Date(startOfDay.getTime() + stepMs * (i + 1));
       telemetryData.push({
         machineStatus: i % 3 === 0 ? 'Stopped' : 'Running',
         machineStatusCode: i % 3 === 0 ? 0 : 1,

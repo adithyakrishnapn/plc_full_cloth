@@ -102,7 +102,7 @@ export default function Sidebar() {
 				FoldX
 			</div>
 
-			<div className="mt-12">
+			{/* <div className="mt-12">
 				<h3 className="mb-6 px-1 text-[11px] font-bold uppercase tracking-widest text-slate-500">
 					Managed Products
 				</h3>
@@ -124,7 +124,7 @@ export default function Sidebar() {
 						</div>
 					))}
 				</div>
-			</div>
+			</div> */}
 
 			<div className="mt-auto pt-10">
 				<div className="rounded-2xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10 p-5 border border-indigo-500/10">

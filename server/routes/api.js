@@ -168,7 +168,8 @@ router.get('/stats/today', async (req, res) => {
         let totalDowntime = minutesSinceStartOfDay - totalRunningTime;
         if (totalDowntime < 0) totalDowntime = 0;
 
-        const utilizationPercent = minutesSinceStartOfDay > 0 ? ((totalRunningTime / minutesSinceStartOfDay) * 100).toFixed(1) : 0;
+        const rawUtilization = minutesSinceStartOfDay > 0 ? ((totalRunningTime / minutesSinceStartOfDay) * 100) : 0;
+        const utilizationPercent = Math.min(100, Math.max(0, rawUtilization)).toFixed(1);
 
         res.json({
             todayProduction: todayProduction.toFixed(2),

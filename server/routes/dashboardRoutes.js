@@ -39,7 +39,8 @@ router.get('/dashboard', async (req, res) => {
     
     const now = new Date()
     const minutesSinceStartOfDay = (now - startOfDay) / 60000
-    const utilizationPercent = minutesSinceStartOfDay > 0 ? ((totalRunningTime / minutesSinceStartOfDay) * 100).toFixed(1) : 0
+    const rawUtilization = minutesSinceStartOfDay > 0 ? ((totalRunningTime / minutesSinceStartOfDay) * 100) : 0
+    const utilizationPercent = Math.min(100, Math.max(0, rawUtilization)).toFixed(1)
     
     const defectsToday = await Defect.countDocuments({
       type: 'defect',

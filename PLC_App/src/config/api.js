@@ -8,9 +8,9 @@ const normalizeApiRoot = (value) => {
   return trimmed.endsWith('/api') ? trimmed.slice(0, -4) : trimmed
 }
 
-const API_ROOT = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_ROOT = import.meta.env.VITE_API_URL
 const API_BASE = normalizeApiRoot(API_ROOT)
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:5000'
+const WS_BASE = import.meta.env.VITE_WS_URL
 
 export const API_CONFIG = {
   // REST API

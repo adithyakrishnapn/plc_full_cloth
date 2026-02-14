@@ -27,11 +27,12 @@ const computeUtilizationFallback = async (now) => {
   })
 
   const minutesSinceStartOfDay = (now - startOfDay) / 60000
-  const utilizationPercent = minutesSinceStartOfDay > 0
+  const rawPercent = minutesSinceStartOfDay > 0
     ? (totalRunningTime / minutesSinceStartOfDay) * 100
     : 0
 
-  return Number(utilizationPercent.toFixed(1))
+  const clampedPercent = Math.min(100, Math.max(0, rawPercent))
+  return Number(clampedPercent.toFixed(1))
 }
 
 export async function transformPlcDataToDashboard() {
@@ -46,7 +47,7 @@ export async function transformPlcDataToDashboard() {
 
   const now = plcData.timestamp instanceof Date ? plcData.timestamp : new Date(plcData.timestamp)
   const utilizationValue = plcData.utilizationPercent != null
-    ? plcData.utilizationPercent
+    ? Math.min(100, Math.max(0, plcData.utilizationPercent))
     : await computeUtilizationFallback(now)
 
   const stats = [
