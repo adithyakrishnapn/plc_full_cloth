@@ -57,6 +57,104 @@ const writeProcessReport = (doc, processDoc, defects) => {
     });
 };
 
+// ✅ Helper function to determine status based on defect count
+const getStatusFromDefectCount = (defectCount) => {
+    if (defectCount === 0) return 'OK';
+    if (defectCount <= 2) return 'WARNING';
+    if (defectCount <= 4) return 'WARNING';
+    return 'CRITICAL';
+};
+
+// ✅ Helper function to write process summary table in PDF
+const writeProcessTable = (doc, processes, allDefects) => {
+    const tableTop = doc.y;
+    const col1X = 50;
+    const col2X = 120;
+    const col3X = 240;
+    const col4X = 360;
+    const col5X = 460;
+    const rowHeight = 30;
+    const colWidth = 90;
+
+    // Header row
+    doc.fontSize(11).font('Helvetica-Bold');
+    doc.text('Date', col1X, tableTop);
+    doc.text('Batch ID', col2X, tableTop);
+    doc.text('Fabric Length', col3X, tableTop);
+    doc.text('Defects', col4X, tableTop);
+    doc.text('Status', col5X, tableTop);
+
+    // Draw header line
+    doc.moveTo(col1X - 10, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+
+    // Data rows
+    doc.fontSize(10).font('Helvetica');
+    let currentY = tableTop + 25;
+
+    processes.forEach((proc) => {
+        const dateStr = proc.endTime 
+            ? proc.endTime.toLocaleDateString('en-GB')
+            : new Date().toLocaleDateString('en-GB');
+        
+        const production = getProductionValue(proc);
+        const fabricLength = `${production} m`;
+        
+        // Count defects for this process
+        const procDefects = allDefects.filter(d => d.processId === proc.processId);
+        const defectCount = procDefects.reduce((sum, d) => sum + (d.count || 1), 0);
+        const status = getStatusFromDefectCount(defectCount);
+
+        // Check if we need a new page
+        if (currentY > 750) {
+            doc.addPage();
+            currentY = 50;
+            
+            // Redraw header on new page
+            doc.fontSize(11).font('Helvetica-Bold');
+            doc.text('Date', col1X, currentY);
+            doc.text('Batch ID', col2X, currentY);
+            doc.text('Fabric Length', col3X, currentY);
+            doc.text('Defects', col4X, currentY);
+            doc.text('Status', col5X, currentY);
+            doc.moveTo(col1X - 10, currentY + 15).lineTo(550, currentY + 15).stroke();
+            currentY += 25;
+            doc.fontSize(10).font('Helvetica');
+        }
+
+        // Write row
+        doc.text(dateStr, col1X, currentY);
+        doc.text(proc.processId || 'N/A', col2X, currentY, { width: 110 });
+        doc.text(fabricLength, col3X, currentY);
+        doc.text(defectCount.toString(), col4X, currentY);
+        
+        // Status with color indicator
+        const statusColor = status === 'OK' ? 'green' : status === 'CRITICAL' ? 'red' : 'orange';
+        doc.text(status, col5X, currentY);
+
+        // Draw row separator
+        doc.moveTo(col1X - 10, currentY + 15).lineTo(550, currentY + 15).stroke('gray');
+        currentY += rowHeight;
+    });
+
+    doc.y = currentY + 10;
+};
+
+// ✅ Helper function to write summary statistics
+const writeSummaryStats = (doc, processes, allDefects) => {
+    const totalProduction = processes.reduce((sum, p) => sum + getProductionValue(p), 0);
+    const totalDefects = allDefects.reduce((sum, d) => sum + (d.count || 1), 0);
+    const processCount = processes.length;
+
+    doc.moveDown(1.5);
+    doc.fontSize(12).font('Helvetica-Bold').text('Summary Statistics');
+    doc.fontSize(11).font('Helvetica');
+    doc.moveDown(0.3);
+    doc.text(`Total Processes: ${processCount}`);
+    doc.text(`Total Fabric Length: ${totalProduction.toFixed(2)} m`);
+    doc.text(`Total Defects: ${totalDefects}`);
+    doc.text(`Average Defects per Process: ${(totalDefects / processCount).toFixed(2)}`);
+};
+
 // Dashboard (Consolidated data for frontend)
 router.get('/dashboard', async (req, res) => {
     try {
@@ -305,6 +403,133 @@ router.get('/defects/current', async (req, res) => {
     }
 });
 
+// ✅ NEW: Get All Defects with Advanced Filters (for Postman testing/debugging)
+// Query Parameters (ALL OPTIONAL):
+//   - processId: Filter by specific process ID (e.g., "PROC-ABC123-4567")
+//   - textileId: Filter by textile ID (e.g., "TEX-260216-173245")
+//   - defectId: Filter by defect ID (e.g., "DEFECT-XYZ789-1234")
+//   - confidence: Minimum confidence level (0-1, e.g., 0.90 for 90%+)
+//   - startDate: Filter from date (ISO format, e.g., "2026-02-15")
+//   - endDate: Filter to date (ISO format, e.g., "2026-02-16")
+//   - limit: Number of records (default: 100, max: 1000)
+//   - skip: Number of records to skip (default: 0)
+// Examples:
+//   GET /api/defects
+//   GET /api/defects?processId=PROC-ABC123-4567
+//   GET /api/defects?textileId=TEX-260216-173245
+//   GET /api/defects?confidence=0.90
+//   GET /api/defects?startDate=2026-02-15&endDate=2026-02-16
+//   GET /api/defects?processId=PROC-ABC123-4567&limit=50
+router.get('/defects', async (req, res) => {
+    try {
+        const { 
+            processId, 
+            textileId, 
+            defectId,
+            confidence,
+            startDate, 
+            endDate, 
+            limit = 100, 
+            skip = 0 
+        } = req.query;
+        
+        // Build query object - always filter by type: "defect"
+        const query = { type: 'defect' };
+        
+        // Filter by processId if provided
+        if (processId) {
+            query.processId = processId;
+        }
+        
+        // Filter by textileId if provided
+        if (textileId) {
+            query.textileId = textileId;
+        }
+        
+        // Filter by defectId if provided
+        if (defectId) {
+            query.defectId = defectId;
+        }
+        
+        // Filter by minimum confidence if provided (0-1 range)
+        if (confidence) {
+            const minConfidence = parseFloat(confidence);
+            if (!isNaN(minConfidence) && minConfidence >= 0 && minConfidence <= 1) {
+                query.confidence = { $gte: minConfidence };
+            }
+        }
+        
+        // Filter by date range if provided
+        if (startDate || endDate) {
+            query.timestamp = {};
+            if (startDate) {
+                query.timestamp.$gte = new Date(startDate);
+            }
+            if (endDate) {
+                const endDateObj = new Date(endDate);
+                endDateObj.setHours(23, 59, 59, 999);
+                query.timestamp.$lte = endDateObj;
+            }
+        }
+        
+        // Validate and set limits
+        const parsedLimit = Math.min(parseInt(limit) || 100, 1000);
+        const parsedSkip = parseInt(skip) || 0;
+        
+        // Fetch defects - sorted by latest first
+        const defects = await Defect.find(query)
+            .sort({ timestamp: -1 })
+            .limit(parsedLimit)
+            .skip(parsedSkip);
+        
+        // Get total count for this query
+        const total = await Defect.countDocuments(query);
+        
+        // Get unique values for reference (helps with understanding data)
+        const uniqueProcessIds = await Defect.distinct('processId', { type: 'defect' });
+        const uniqueTextileIds = await Defect.distinct('textileId', { type: 'defect' });
+        
+        // Calculate confidence stats
+        const stats = await Defect.aggregate([
+            { $match: { type: 'defect' } },
+            { 
+                $group: {
+                    _id: null,
+                    avgConfidence: { $avg: '$confidence' },
+                    minConfidence: { $min: '$confidence' },
+                    maxConfidence: { $max: '$confidence' },
+                    totalDefects: { $sum: '$count' }
+                }
+            }
+        ]);
+        
+        res.json({
+            success: true,
+            count: defects.length,
+            total,
+            skip: parsedSkip,
+            limit: parsedLimit,
+            filters: {
+                processId: processId || null,
+                textileId: textileId || null,
+                defectId: defectId || null,
+                minConfidence: confidence || null,
+                startDate: startDate || null,
+                endDate: endDate || null
+            },
+            stats: stats.length > 0 ? stats[0] : { avgConfidence: 0, minConfidence: 0, maxConfidence: 0, totalDefects: 0 },
+            data: defects,
+            availableProcessIds: uniqueProcessIds,
+            availableTextileIds: uniqueTextileIds
+        });
+    } catch (err) {
+        res.status(500).json({ 
+            success: false, 
+            error: err.message 
+        });
+    }
+});
+
 // Dashboard Stats
 router.get('/stats/today', async (req, res) => {
     try {
@@ -460,13 +685,17 @@ router.get('/reports/process/:processId', async (req, res) => {
     }
 });
 
-// Date Range Report (PDF)
+// Date Range Report (PDF) - with Table Format
+// Query Parameters:
+//   - from: Start date (YYYY-MM-DD)
+//   - to: End date (YYYY-MM-DD)
+// Example: GET /api/reports/range?from=2026-02-15&to=2026-02-16
 router.get('/reports/range', async (req, res) => {
     try {
         const { from, to } = req.query;
 
         if (!from || !to) {
-            return res.status(400).json({ error: 'Both from and to dates are required' });
+            return res.status(400).json({ error: 'Both from and to dates are required (format: YYYY-MM-DD)' });
         }
 
         const fromDate = new Date(from);
@@ -495,34 +724,78 @@ router.get('/reports/range', async (req, res) => {
         const doc = new PDFDocument({ margin: 40 });
         doc.pipe(res);
 
+        // Title
         doc.fontSize(20).text('Production Report', { align: 'center' });
-        doc.moveDown(0.5);
+        doc.moveDown(0.3);
         doc.fontSize(12).text(`Period: ${from} to ${to}`, { align: 'center' });
         doc.moveDown(2);
 
-        doc.fontSize(14).text(`Total Processes: ${processes.length}`);
-        doc.text(`Total Defects: ${allDefects.length}`);
-        doc.moveDown(1.5);
-
         if (processes.length === 0) {
             doc.fontSize(12).text('No processes found in this date range.');
-        } else {
-            processes.forEach((proc, index) => {
-                const durationMinutes = getDurationMinutes(proc);
-                const production = getProductionValue(proc);
-                const procDefects = allDefects.filter(d => d.processId === proc.processId).length;
-
-                doc.fontSize(14).text(`Process ${index + 1}: ${proc.processId || proc._id}`);
-                doc.fontSize(10);
-                doc.text(`  Textile ID: ${proc.textileId || 'N/A'}`);
-                doc.text(`  Start: ${proc.startTime ? proc.startTime.toISOString() : 'N/A'}`);
-                doc.text(`  End: ${proc.endTime ? proc.endTime.toISOString() : 'N/A'}`);
-                doc.text(`  Duration (min): ${durationMinutes != null ? durationMinutes.toFixed(2) : 'N/A'}`);
-                doc.text(`  Production: ${production != null ? production : 'N/A'}`);
-                doc.text(`  Defects: ${procDefects}`);
-                doc.moveDown(0.5);
-            });
+            doc.end();
+            return;
         }
+
+        // Write table
+        writeProcessTable(doc, processes, allDefects);
+
+        // Write summary statistics
+        writeSummaryStats(doc, processes, allDefects);
+
+        doc.end();
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ✅ NEW: Today's Production Report (PDF) - with Table Format
+// Example: GET /api/reports/today
+router.get('/reports/today', async (req, res) => {
+    try {
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const processes = await Process.find({
+            type: 'process_summary',
+            $or: [
+                { startTime: { $gte: startOfDay, $lte: endOfDay } },
+                { endTime: { $gte: startOfDay, $lte: endOfDay } },
+                { endTime: null, startTime: { $lte: endOfDay } }
+            ]
+        }).sort({ endTime: -1, startTime: -1 });
+
+        const allDefects = await Defect.find({
+            type: 'defect',
+            timestamp: { $gte: startOfDay, $lte: endOfDay }
+        }).sort({ timestamp: 1 });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="production-report-today.pdf"`);
+
+        const doc = new PDFDocument({ margin: 40 });
+        doc.pipe(res);
+
+        // Title
+        const today = new Date().toLocaleDateString('en-GB');
+        doc.fontSize(20).text('Daily Production Report', { align: 'center' });
+        doc.moveDown(0.3);
+        doc.fontSize(12).text(`Date: ${today}`, { align: 'center' });
+        doc.moveDown(2);
+
+        if (processes.length === 0) {
+            doc.fontSize(12).text('No processes found for today.');
+            doc.end();
+            return;
+        }
+
+        // Write table
+        writeProcessTable(doc, processes, allDefects);
+
+        // Write summary statistics
+        writeSummaryStats(doc, processes, allDefects);
 
         doc.end();
     } catch (err) {
