@@ -103,6 +103,11 @@ export const dashboardReducer = (state, action) => {
         { label: 'Today Working Hours', value: `${Math.floor((dashboardStats.totalRunningTime || 0) / 60)} hrs` },
         { label: 'Today Production', value: `${Math.floor(dashboardStats.todayProduction || 0)} m` },
         { 
+          label: 'Defects Detected', 
+          value: `${dashboardStats.totalDefectsToday || 0}`,
+          accent: 'text-red-400'
+        },
+        { 
           label: 'Utilization', 
           value: `${utilizationPercent}%`,
           accent: Number(utilizationPercent) > 80 ? 'text-emerald-400' : Number(utilizationPercent) > 60 ? 'text-amber-300' : 'text-slate-100'
@@ -110,20 +115,31 @@ export const dashboardReducer = (state, action) => {
       ]
 
       // Process history into log rows
-      const logRows = (payload.processHistory || []).slice(0, 10).map((process) => ({
-        date: process.endTime ? new Date(process.endTime).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : (process.startTime ? new Date(process.startTime).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'),
-        batch: process.processId || 'N/A',
-        length: `${Math.floor(process.production || process.fabricProcessed || 0)} m`,
-        defects: payload.currentDefects?.filter(d => d.processId === process.processId).length || 0,
-        status: 'OK',
-      }))
+      // ✅ FIXED: Always create logRows array, even if empty, and ensure proper defect counting
+      const logRows = (payload.processHistory || [])
+        .filter(process => process.endTime) // Only include completed processes
+        .slice(0, 10)
+        .map((process) => {
+          // Count defects for this specific process
+          const processDefects = (payload.currentDefects || []).filter(d => 
+            d.processId === process.processId || d.processId === process._id?.toString()
+          ).length;
+          
+          return {
+            date: process.endTime ? new Date(process.endTime).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A',
+            batch: process.processId || process._id?.toString() || 'N/A',
+            length: `${Math.floor(process.production || process.fabricProcessed || 0)} m`,
+            defects: processDefects,
+            status: processDefects > 0 ? 'WARNING' : 'OK',
+          };
+        })
 
       return {
         ...state,
         stats: updatedStats,
         runtimePoints: payload.runtimePoints || state.runtimePoints,
         productionBars: payload.productionBars || state.productionBars,
-        logRows: logRows.length > 0 ? logRows : state.logRows,
+        logRows: logRows, // ✅ FIXED: Always update logRows, even if empty
         latest: payload.latest || state.latest,
         currentProcess: payload.currentProcess || state.currentProcess,
         processHistory: payload.processHistory || state.processHistory,

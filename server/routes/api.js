@@ -72,7 +72,11 @@ router.get('/dashboard', async (req, res) => {
             .limit(20);
 
         // ✅ FIXED: Get ALL defects for process history, not just current process
-        const processIds = [currentProcess?.processId, ...processHistory.map(p => p.processId)].filter(Boolean);
+        const processIds = [
+            currentProcess?.processId, 
+            ...processHistory.map(p => p.processId)
+        ].filter(Boolean);
+        
         const currentDefects = processIds.length > 0
             ? await Defect.find({ type: 'defect', processId: { $in: processIds } }).sort({ timestamp: -1 })
             : [];
