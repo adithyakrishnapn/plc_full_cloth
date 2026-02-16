@@ -84,20 +84,8 @@ router.get('/dashboard', async (req, res) => {
         const endOfDay = new Date();
         endOfDay.setHours(23, 59, 59, 999);
 
-        const latestTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $lte: endOfDay } }).sort({ timestamp: -1 });
-        const firstTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $gte: startOfDay } }).sort({ timestamp: 1 });
-
-        let todayProduction = 0;
-        if (latestTelem && firstTelem) {
-            todayProduction = (latestTelem.totalProduction || 0) - (firstTelem.totalProduction || 0);
-            if (todayProduction < 0) todayProduction = 0;
-        }
-
-        const totalDefectsToday = await Defect.countDocuments({
-            type: 'defect',
-            timestamp: { $gte: startOfDay, $lte: endOfDay }
-        });
-
+        // ✅ FIXED: Calculate today's production from processes instead of telemetry difference
+        // This is more reliable as it sums actual production from completed processes today
         const processesToday = await Process.find({
             type: 'process_summary',
             $or: [
@@ -107,6 +95,29 @@ router.get('/dashboard', async (req, res) => {
             ]
         });
 
+        // Calculate total production from all processes today
+        let todayProduction = 0;
+        processesToday.forEach(proc => {
+            const production = getProductionValue(proc);
+            todayProduction += production;
+        });
+
+        // Fallback: If no processes today, try telemetry difference method
+        if (todayProduction === 0) {
+            const latestTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $lte: endOfDay } }).sort({ timestamp: -1 });
+            const firstTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $gte: startOfDay } }).sort({ timestamp: 1 });
+            if (latestTelem && firstTelem) {
+                todayProduction = (latestTelem.totalProduction || 0) - (firstTelem.totalProduction || 0);
+                if (todayProduction < 0) todayProduction = 0;
+            }
+        }
+
+        const totalDefectsToday = await Defect.countDocuments({
+            type: 'defect',
+            timestamp: { $gte: startOfDay, $lte: endOfDay }
+        });
+
+        // processesToday already queried above for production calculation
         let totalRunningTime = 0;
         processesToday.forEach(p => {
             if (p.durationMinutes) totalRunningTime += p.durationMinutes;
@@ -279,20 +290,7 @@ router.get('/stats/today', async (req, res) => {
         const endOfDay = new Date();
         endOfDay.setHours(23, 59, 59, 999);
 
-        const latestTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $lte: endOfDay } }).sort({ timestamp: -1 });
-        const firstTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $gte: startOfDay } }).sort({ timestamp: 1 });
-
-        let todayProduction = 0;
-        if (latestTelem && firstTelem) {
-            todayProduction = (latestTelem.totalProduction || 0) - (firstTelem.totalProduction || 0);
-            if (todayProduction < 0) todayProduction = 0;
-        }
-
-        const totalDefectsToday = await Defect.countDocuments({
-            type: 'defect',
-            timestamp: { $gte: startOfDay, $lte: endOfDay }
-        });
-
+        // ✅ FIXED: Calculate today's production from processes instead of telemetry difference
         const processesToday = await Process.find({
             type: 'process_summary',
             $or: [
@@ -300,6 +298,28 @@ router.get('/stats/today', async (req, res) => {
                 { endTime: { $gte: startOfDay, $lte: endOfDay } },
                 { endTime: null, startTime: { $lte: endOfDay } }
             ]
+        });
+
+        // Calculate total production from all processes today
+        let todayProduction = 0;
+        processesToday.forEach(proc => {
+            const production = getProductionValue(proc);
+            todayProduction += production;
+        });
+
+        // Fallback: If no processes today, try telemetry difference method
+        if (todayProduction === 0) {
+            const latestTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $lte: endOfDay } }).sort({ timestamp: -1 });
+            const firstTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $gte: startOfDay } }).sort({ timestamp: 1 });
+            if (latestTelem && firstTelem) {
+                todayProduction = (latestTelem.totalProduction || 0) - (firstTelem.totalProduction || 0);
+                if (todayProduction < 0) todayProduction = 0;
+            }
+        }
+
+        const totalDefectsToday = await Defect.countDocuments({
+            type: 'defect',
+            timestamp: { $gte: startOfDay, $lte: endOfDay }
         });
 
         let totalRunningTime = 0;

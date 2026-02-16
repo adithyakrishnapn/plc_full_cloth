@@ -9,6 +9,7 @@ export const DashboardContext = createContext()
 export function DashboardProvider({ children }) {
   const [state, dispatch] = useReducer(dashboardReducer, initialState)
   const socketRef = useRef(null)
+  const updateTimersRef = useRef({})
 
   useEffect(() => {
     const fetchInitialDashboard = async () => {
@@ -63,29 +64,36 @@ export function DashboardProvider({ children }) {
           dispatch({ type: 'SET_CONNECTED', payload: false })
         })
 
-        // Real-time update listeners
+        // Real-time update listeners with debouncing
+        const debouncedFetch = (eventName) => {
+          clearTimeout(updateTimersRef.current[eventName])
+          updateTimersRef.current[eventName] = setTimeout(() => {
+            fetchInitialDashboard()
+          }, 300) // Wait 300ms for multiple rapid events to batch together
+        }
+
         socketRef.current.on('telemetry_update', (data) => {
           console.log('Telemetry update:', data)
           dispatch({ type: 'UPDATE_TELEMETRY', payload: data })
-          fetchInitialDashboard()
+          debouncedFetch('telemetry')
         })
 
         socketRef.current.on('process_started', (data) => {
           console.log('Process started:', data)
           dispatch({ type: 'UPDATE_PROCESS', payload: data })
-          fetchInitialDashboard()
+          debouncedFetch('process_started')
         })
 
         socketRef.current.on('process_ended', (data) => {
           console.log('Process ended:', data)
           dispatch({ type: 'UPDATE_PROCESS', payload: data })
-          fetchInitialDashboard()
+          debouncedFetch('process_ended')
         })
 
         socketRef.current.on('defect_detected', (data) => {
           console.log('Defect detected:', data)
           dispatch({ type: 'ADD_DEFECT', payload: data })
-          fetchInitialDashboard()
+          debouncedFetch('defect')
         })
       } catch (error) {
         console.error('Failed to connect Socket.IO:', error)
@@ -95,6 +103,11 @@ export function DashboardProvider({ children }) {
     connectSocket()
 
     return () => {
+      // Clear all timers
+      if (updateTimersRef.current) {
+        Object.values(updateTimersRef.current).forEach(timer => clearTimeout(timer))
+      }
+      // Disconnect socket
       if (socketRef.current) {
         socketRef.current.off('telemetry_update')
         socketRef.current.off('process_started')
