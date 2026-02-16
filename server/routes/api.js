@@ -122,17 +122,37 @@ router.get('/dashboard', async (req, res) => {
         });
 
         // processesToday already queried above for production calculation
+        // ✅ FIXED: Calculate running time correctly for all process scenarios
         let totalRunningTime = 0;
+        const now = new Date();
+        
         processesToday.forEach(p => {
-            if (p.durationMinutes) totalRunningTime += p.durationMinutes;
+            let processMinutes = 0;
+            
+            // Case 1: Process has stored durationMinutes
+            if (p.durationMinutes != null) {
+                processMinutes = p.durationMinutes;
+            }
+            // Case 2: Process is completed (has endTime) - calculate duration
+            else if (p.endTime && p.startTime) {
+                // Only count the portion within today
+                const processStart = p.startTime < startOfDay ? startOfDay : p.startTime;
+                const processEnd = p.endTime > endOfDay ? endOfDay : p.endTime;
+                processMinutes = (processEnd - processStart) / 60000;
+            }
+            // Case 3: Process is still running (no endTime)
             else if (!p.endTime && p.startTime) {
-                const now = new Date();
-                const diff = (now - p.startTime) / 60000;
-                totalRunningTime += diff;
+                // Only count time from start of day (or process start if later)
+                const processStart = p.startTime < startOfDay ? startOfDay : p.startTime;
+                processMinutes = (now - processStart) / 60000;
+            }
+            
+            // Ensure we don't count negative time
+            if (processMinutes > 0) {
+                totalRunningTime += processMinutes;
             }
         });
 
-        const now = new Date();
         const minutesSinceStartOfDay = (now - startOfDay) / 60000;
         let totalDowntime = minutesSinceStartOfDay - totalRunningTime;
         if (totalDowntime < 0) totalDowntime = 0;
@@ -326,17 +346,44 @@ router.get('/stats/today', async (req, res) => {
             timestamp: { $gte: startOfDay, $lte: endOfDay }
         });
 
+        // ✅ FIXED: Calculate running time correctly for all process scenarios
         let totalRunningTime = 0;
+        const now = new Date();
+        
         processesToday.forEach(p => {
-            if (p.durationMinutes) totalRunningTime += p.durationMinutes;
+            let processMinutes = 0;
+            
+            // Case 1: Process has stored durationMinutes
+            if (p.durationMinutes != null) {
+                // Only count the portion within today
+                if (p.endTime && p.endTime >= startOfDay && p.startTime <= endOfDay) {
+                    const processStart = p.startTime < startOfDay ? startOfDay : p.startTime;
+                    const processEnd = p.endTime > endOfDay ? endOfDay : p.endTime;
+                    processMinutes = (processEnd - processStart) / 60000;
+                } else {
+                    processMinutes = p.durationMinutes;
+                }
+            }
+            // Case 2: Process is completed (has endTime) - calculate duration
+            else if (p.endTime && p.startTime) {
+                // Only count the portion within today
+                const processStart = p.startTime < startOfDay ? startOfDay : p.startTime;
+                const processEnd = p.endTime > endOfDay ? endOfDay : p.endTime;
+                processMinutes = (processEnd - processStart) / 60000;
+            }
+            // Case 3: Process is still running (no endTime)
             else if (!p.endTime && p.startTime) {
-                const now = new Date();
-                const diff = (now - p.startTime) / 60000;
-                totalRunningTime += diff;
+                // Only count time from start of day (or process start if later)
+                const processStart = p.startTime < startOfDay ? startOfDay : p.startTime;
+                processMinutes = (now - processStart) / 60000;
+            }
+            
+            // Ensure we don't count negative time
+            if (processMinutes > 0) {
+                totalRunningTime += processMinutes;
             }
         });
 
-        const now = new Date();
         const minutesSinceStartOfDay = (now - startOfDay) / 60000;
         let totalDowntime = minutesSinceStartOfDay - totalRunningTime;
         if (totalDowntime < 0) totalDowntime = 0;
