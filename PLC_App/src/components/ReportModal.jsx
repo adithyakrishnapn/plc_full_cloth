@@ -166,7 +166,7 @@ export default function ReportModal({ onClose }) {
     }
 
     const reportUrl = getReportUrl()
-    const productionValue = latestProcess?.production?.fabricProcessed ?? latestProcess?.fabricProcessed ?? 'N/A'
+    const productionValue = latestProcess?.fabricProcessed ?? latestProcess?.production ?? 'N/A'
     const durationMinutes = latestProcess?.durationMinutes
     const isComplete = Boolean(latestProcess?.endTime)
 

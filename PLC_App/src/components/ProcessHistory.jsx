@@ -36,7 +36,7 @@ const ProcessHistory = ({ history }) => {
                                         {proc.durationMinutes?.toFixed(1) || '-'}
                                     </td>
                                     <td className="p-4 text-right text-green-300 font-mono text-sm font-bold">
-                                        {proc.production?.fabricProcessed || proc.fabricProcessed || '-'}
+                                        {proc.fabricProcessed || proc.production || '-'}
                                     </td>
                                 </tr>
                             ))

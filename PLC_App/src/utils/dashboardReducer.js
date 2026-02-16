@@ -1,9 +1,9 @@
 export const initialState = {
   stats: [
-    { label: 'Machine Status', value: 'RUNNING', accent: 'text-emerald-400' },
-    { label: 'Today Working Hours', value: '7.6 hrs' },
-    { label: 'Today Production', value: '42 rolls' },
-    { label: 'Defects Detected', value: '3' },
+    { label: 'Machine Status', value: 'IDLE', accent: 'text-emerald-400' },
+    { label: 'Today Working Hours', value: '0 hrs' },
+    { label: 'Today Production', value: '0 rolls' },
+    { label: 'Defects Detected', value: '0' },
   ],
   runtimePoints: [
     { x: 0, y: 80, label: '6AM' },
@@ -15,20 +15,28 @@ export const initialState = {
     { x: 108, y: 14, label: '6PM' },
   ],
   productionBars: [
-    { month: 'Jan', value: 760 },
-    { month: 'Feb', value: 680 },
-    { month: 'Mar', value: 840 },
-    { month: 'Apr', value: 920 },
-    { month: 'May', value: 1020 },
-    { month: 'Jun', value: 1120 },
+    { month: 'Jan', value: 0 },
+    { month: 'Feb', value: 0 },
+    { month: 'Mar', value: 0 },
+    { month: 'Apr', value: 0 },
+    { month: 'May', value: 0 },
+    { month: 'Jun', value: 0 },
   ],
-  logRows: [
-    { date: '12 Jun', batch: 'FX-24061', length: '120 m', defects: 1, status: 'OK' },
-    { date: '12 Jun', batch: 'FX-24062', length: '110 m', defects: 0, status: 'OK' },
-    { date: '12 Jun', batch: 'FX-24063', length: '95 m', defects: 2, status: 'CHECK' },
-  ],
-  lastUpdated: '12 Jun 2026 · 14:32',
+  logRows: [],
+  lastUpdated: new Date().toLocaleString(),
   isConnected: false,
+  // Dashboard data
+  latest: null,
+  currentProcess: null,
+  processHistory: [],
+  currentDefects: [],
+  dashboardStats: {
+    todayProduction: 0,
+    totalDefectsToday: 0,
+    totalRunningTime: 0,
+    totalDowntime: 0,
+    utilizationPercent: 0,
+  },
 }
 
 export const dashboardReducer = (state, action) => {
@@ -78,14 +86,81 @@ export const dashboardReducer = (state, action) => {
         isConnected: action.payload,
       }
 
-    case 'UPDATE_ALL_DATA':
-      console.log('Updating dashboard with:', action.payload)
+    case 'UPDATE_ALL_DATA': {
+      // Parse consolidated dashboard data from server
+      const payload = action.payload
+      
+      // Update stats from dashboard stats
+      const dashboardStats = payload.stats || state.dashboardStats
+      const utilizationPercent = dashboardStats.utilizationPercent || 0
+      
+      const updatedStats = [
+        { 
+          label: 'Machine Status', 
+          value: payload.latest?.machineStatus || payload.latest?.machineRunning ? 'RUNNING' : 'STOPPED', 
+          accent: (payload.latest?.machineStatus === 'RUNNING' || payload.latest?.machineRunning) ? 'text-emerald-400' : 'text-gray-400' 
+        },
+        { label: 'Today Working Hours', value: `${Math.floor((dashboardStats.totalRunningTime || 0) / 60)} hrs` },
+        { label: 'Today Production', value: `${Math.floor(dashboardStats.todayProduction || 0)} m` },
+        { 
+          label: 'Utilization', 
+          value: `${utilizationPercent}%`,
+          accent: Number(utilizationPercent) > 80 ? 'text-emerald-400' : Number(utilizationPercent) > 60 ? 'text-amber-300' : 'text-slate-100'
+        },
+      ]
+
+      // Process history into log rows
+      const logRows = (payload.processHistory || []).slice(0, 10).map((process) => ({
+        date: process.endTime ? new Date(process.endTime).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : (process.startTime ? new Date(process.startTime).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A'),
+        batch: process.processId || 'N/A',
+        length: `${Math.floor(process.production || process.fabricProcessed || 0)} m`,
+        defects: payload.currentDefects?.filter(d => d.processId === process.processId).length || 0,
+        status: 'OK',
+      }))
+
       return {
         ...state,
-        stats: action.payload.stats || state.stats,
-        runtimePoints: action.payload.runtimePoints || state.runtimePoints,
-        productionBars: action.payload.productionBars || state.productionBars,
-        logRows: action.payload.logRows || state.logRows,
+        stats: updatedStats,
+        runtimePoints: payload.runtimePoints || state.runtimePoints,
+        productionBars: payload.productionBars || state.productionBars,
+        logRows: logRows.length > 0 ? logRows : state.logRows,
+        latest: payload.latest || state.latest,
+        currentProcess: payload.currentProcess || state.currentProcess,
+        processHistory: payload.processHistory || state.processHistory,
+        currentDefects: payload.currentDefects || state.currentDefects,
+        dashboardStats: dashboardStats,
+        lastUpdated: new Date().toLocaleString(),
+      }
+    }
+
+    case 'UPDATE_TELEMETRY':
+      return {
+        ...state,
+        latest: action.payload,
+        stats: state.stats.map((stat) =>
+          stat.label === 'Machine Status'
+            ? { ...stat, value: action.payload.machineStatus, accent: action.payload.machineStatus === 'RUNNING' ? 'text-emerald-400' : 'text-gray-400' }
+            : stat
+        ),
+        lastUpdated: new Date().toLocaleString(),
+      }
+
+    case 'UPDATE_PROCESS':
+      return {
+        ...state,
+        currentProcess: action.payload,
+        lastUpdated: new Date().toLocaleString(),
+      }
+
+    case 'ADD_DEFECT':
+      return {
+        ...state,
+        currentDefects: [action.payload, ...state.currentDefects],
+        stats: state.stats.map((stat) =>
+          stat.label === 'Defects Detected'
+            ? { ...stat, value: String(parseInt(stat.value) + 1) }
+            : stat
+        ),
         lastUpdated: new Date().toLocaleString(),
       }
 

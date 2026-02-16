@@ -1,38 +1,11 @@
 import mongoose from 'mongoose'
+import Base from '../models/Base.js'
+import Telemetry from '../models/Telemetry.js'
+import Process from '../models/Process.js'
+import Defect from '../models/Defect.js'
 
-const plcDataSchema = new mongoose.Schema({
-  machineStatus: String,
-  shiftWorkingHours: Number,
-  totalUptimeHours: Number,
-  todayProduction: Number,
-  totalProduction: Number,
-  fabricLengthMeters: Number,
-  machineSpeed: Number,
-  utilizationPercent: Number,
-  downtimeMinutes: Number,
-  alarmCode: Number,
-  timestamp: { type: Date, default: Date.now },
-}, { timestamps: true })
+// ✅ FIXED: Use proper discriminator model instead of duplicate schema
+// This model uses the same schema as the PLC server to ensure data consistency
+const PLCData = Base
 
-const productionLogSchema = new mongoose.Schema({
-  date: Date,
-  batch: String,
-  length: Number,
-  defects: Number,
-  status: String,
-  timestamp: { type: Date, default: Date.now },
-})
-
-const alertSchema = new mongoose.Schema({
-  alarmCode: Number,
-  message: String,
-  severity: String,
-  timestamp: { type: Date, default: Date.now },
-  resolved: { type: Boolean, default: false },
-})
-
-const PLCData = mongoose.models.PLCData || mongoose.model('PLCData', plcDataSchema)
-const ProductionLog = mongoose.models.ProductionLog || mongoose.model('ProductionLog', productionLogSchema)
-const Alert = mongoose.models.Alert || mongoose.model('Alert', alertSchema)
-
-export { PLCData, ProductionLog, Alert }
+export { PLCData, Process as ProductionLog, Defect as Alert }

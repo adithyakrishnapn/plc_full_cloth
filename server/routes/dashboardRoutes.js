@@ -54,6 +54,12 @@ router.get('/dashboard', async (req, res) => {
       timestamp: { $gte: twelveHoursAgo, $lte: now }
     }).sort({ timestamp: 1 })
 
+    console.log('[Dashboard] Telemetry query:', {
+      query: { type: 'telemetry', timestamp: { $gte: twelveHoursAgo, $lte: now } },
+      found: telemetryData.length,
+      samples: telemetryData.slice(0, 2).map(t => ({ type: t.type, timestamp: t.timestamp, machineRunning: t.machineRunning }))
+    })
+
     const runtimePoints = telemetryData.length > 0 
       ? telemetryData.map((data, idx) => {
           const utilizationEstimate = data.machineRunning ? 80 : 20
@@ -71,27 +77,41 @@ router.get('/dashboard', async (req, res) => {
       endTime: { $ne: null }
     }).sort({ endTime: -1 }).limit(10)
 
-    const logRows = recentProcesses.map(proc => ({
-      date: proc.endTime ? proc.endTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A',
-      batch: proc.processId || 'N/A',
-      length: `${proc.production?.fabricProcessed || proc.fabricProcessed || 0} m`,
-      defects: 0,
-      status: 'OK'
-    }))
+    // ✅ FIXED: Query actual defects for each process instead of hardcoding to 0
+    const logRows = []
+    for (const proc of recentProcesses) {
+      const processDefects = await Defect.countDocuments({
+        type: 'defect',
+        processId: proc.processId
+      })
+      
+      logRows.push({
+        date: proc.endTime ? proc.endTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A',
+        batch: proc.processId || 'N/A',
+        length: `${(proc.production || proc.fabricProcessed || 0).toFixed(0)} m`,
+        defects: processDefects,  // ✅ FIXED: Actual count from database
+        status: 'OK'
+      })
+    }
 
     // Monthly production (last 6 months)
     const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
     const monthlyProcesses = await Process.find({
       type: 'process_summary',
-      endTime: { $ne: null },
-      endTime: { $gte: sixMonthsAgo, $lte: now }
+      endTime: { $ne: null, $gte: sixMonthsAgo, $lte: now }  // ✅ FIXED: Combined into single query
+    })
+
+    console.log('[Dashboard] Process query:', {
+      query: { type: 'process_summary', endTime: { $ne: null }, endTime: { $gte: sixMonthsAgo, $lte: now } },
+      found: monthlyProcesses.length,
+      samples: monthlyProcesses.slice(0, 2).map(p => ({ type: p.type, endTime: p.endTime, production: p.production }))
     })
 
     const monthMap = new Map()
     monthlyProcesses.forEach(proc => {
       if (proc.endTime) {
         const monthKey = `${proc.endTime.getFullYear()}-${proc.endTime.getMonth()}`
-        const production = proc.production?.fabricProcessed || proc.fabricProcessed || 0
+        const production = (proc.production || proc.fabricProcessed || 0)
         monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + production)
       }
     })
@@ -109,7 +129,7 @@ router.get('/dashboard', async (req, res) => {
     
     // Calculate total production from all processes today
     const totalProductionToday = processesToday.reduce((sum, proc) => {
-      return sum + (proc.production?.fabricProcessed || proc.fabricProcessed || 0)
+      return sum + (proc.production || proc.fabricProcessed || 0)
     }, 0)
 
     const responseData = {

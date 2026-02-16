@@ -6,11 +6,12 @@ import Defect from '../models/Defect.js';
 
 const router = express.Router();
 
+// ✅ FIXED: Simplified to use direct field (production is now direct, not nested)
 const getProductionValue = (processDoc) => {
     if (!processDoc) return 0;
-    if (processDoc.production && processDoc.production.fabricProcessed != null) {
-        return processDoc.production.fabricProcessed;
-    }
+    // Try direct field first (after fix)
+    if (processDoc.production != null) return processDoc.production;
+    // Fallback for legacy data with nested structure
     if (processDoc.fabricProcessed != null) return processDoc.fabricProcessed;
     return 0;
 };
@@ -56,6 +57,154 @@ const writeProcessReport = (doc, processDoc, defects) => {
     });
 };
 
+// Dashboard (Consolidated data for frontend)
+router.get('/dashboard', async (req, res) => {
+    try {
+        // Get latest telemetry
+        const latestTelemetry = await Telemetry.findOne({ type: 'telemetry' }).sort({ timestamp: -1 });
+
+        // Get current process
+        const currentProcess = await Process.findOne({ type: 'process_summary', endTime: null }).sort({ startTime: -1 });
+
+        // Get process history
+        const processHistory = await Process.find({ type: 'process_summary', endTime: { $ne: null } })
+            .sort({ endTime: -1 })
+            .limit(20);
+
+        // ✅ FIXED: Get ALL defects for process history, not just current process
+        const processIds = [currentProcess?.processId, ...processHistory.map(p => p.processId)].filter(Boolean);
+        const currentDefects = processIds.length > 0
+            ? await Defect.find({ type: 'defect', processId: { $in: processIds } }).sort({ timestamp: -1 })
+            : [];
+
+        // Get today's stats
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const latestTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $lte: endOfDay } }).sort({ timestamp: -1 });
+        const firstTelem = await Telemetry.findOne({ type: 'telemetry', timestamp: { $gte: startOfDay } }).sort({ timestamp: 1 });
+
+        let todayProduction = 0;
+        if (latestTelem && firstTelem) {
+            todayProduction = (latestTelem.totalProduction || 0) - (firstTelem.totalProduction || 0);
+            if (todayProduction < 0) todayProduction = 0;
+        }
+
+        const totalDefectsToday = await Defect.countDocuments({
+            type: 'defect',
+            timestamp: { $gte: startOfDay, $lte: endOfDay }
+        });
+
+        const processesToday = await Process.find({
+            type: 'process_summary',
+            $or: [
+                { startTime: { $gte: startOfDay, $lte: endOfDay } },
+                { endTime: { $gte: startOfDay, $lte: endOfDay } },
+                { endTime: null, startTime: { $lte: endOfDay } }
+            ]
+        });
+
+        let totalRunningTime = 0;
+        processesToday.forEach(p => {
+            if (p.durationMinutes) totalRunningTime += p.durationMinutes;
+            else if (!p.endTime && p.startTime) {
+                const now = new Date();
+                const diff = (now - p.startTime) / 60000;
+                totalRunningTime += diff;
+            }
+        });
+
+        const now = new Date();
+        const minutesSinceStartOfDay = (now - startOfDay) / 60000;
+        let totalDowntime = minutesSinceStartOfDay - totalRunningTime;
+        if (totalDowntime < 0) totalDowntime = 0;
+
+        const rawUtilization = minutesSinceStartOfDay > 0 ? ((totalRunningTime / minutesSinceStartOfDay) * 100) : 0;
+        const utilizationPercent = Math.min(100, Math.max(0, rawUtilization)).toFixed(1);
+
+        // Monthly production (last 6 months)
+        const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+        const monthlyProcesses = await Process.find({
+            type: 'process_summary',
+            endTime: { $ne: null, $gte: sixMonthsAgo, $lte: now }
+        });
+
+        const monthMap = new Map();
+        monthlyProcesses.forEach(proc => {
+            const monthKey = `${proc.endTime.getFullYear()}-${proc.endTime.getMonth()}`;
+            const production = getProductionValue(proc);
+            monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + production);
+        });
+
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const productionBars = [];
+        for (let i = 5; i >= 0; i--) {
+            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+            productionBars.push({
+                month: months[date.getMonth()],
+                value: monthMap.get(monthKey) || 0
+            });
+        }
+
+        // Get telemetry for last 12 hours for runtime chart
+        const twelveHoursAgo = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        const telemetryData = await Telemetry.find({
+            type: 'telemetry',
+            timestamp: { $gte: twelveHoursAgo, $lte: now }
+        }).sort({ timestamp: 1 });
+
+        // Calculate runtime points based on machine running status
+        // Downsample to max 24 points (one per 30 minutes) for better performance
+        const downsampledData = telemetryData.length > 24 
+            ? telemetryData.filter((_, idx) => idx % Math.ceil(telemetryData.length / 24) === 0)
+            : telemetryData;
+
+        const runtimePoints = downsampledData.length > 0 
+            ? downsampledData.map((data, idx) => {
+                // Calculate utilization based on machine running status
+                // If machine is running, use high utilization (85-95%)
+                // If stopped, use low utilization (5-15%)
+                const baseUtilization = data.machineRunning ? 90 : 10;
+                
+                // Map utilization to Y coordinate (inverted: higher utilization = lower Y)
+                // Chart expects Y values where lower Y = higher on screen
+                const maxY = 80;
+                const minY = 14;
+                const y = maxY - ((baseUtilization / 100) * (maxY - minY));
+                
+                return {
+                    x: idx * 18,
+                    y: y,
+                    label: data.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+                };
+            })
+            : [];
+
+        res.json({
+            timestamp: new Date(),
+            latest: latestTelemetry,
+            currentProcess,
+            processHistory,
+            currentDefects,
+            productionBars,
+            runtimePoints,
+            stats: {
+                todayProduction: parseFloat(todayProduction.toFixed(2)),
+                totalDefectsToday,
+                totalRunningTime: Math.floor(totalRunningTime),
+                totalDowntime: Math.floor(totalDowntime),
+                utilizationPercent: parseFloat(utilizationPercent)
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Latest Machine Status (Telemetry)
 router.get('/latest', async (req, res) => {
     try {
@@ -88,7 +237,7 @@ router.get('/process/latest', async (req, res) => {
     }
 });
 
-// Process History
+// Process History (Transform ProductionLog to Process format)
 router.get('/process/history', async (req, res) => {
     try {
         const history = await Process.find({ type: 'process_summary', endTime: { $ne: null } })

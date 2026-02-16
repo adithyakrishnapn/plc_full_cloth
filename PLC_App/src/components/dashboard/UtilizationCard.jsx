@@ -7,8 +7,9 @@ export default function UtilizationCard() {
   const utilizationPercent = useMemo(() => {
     const utilizationStat = state.stats.find((stat) => stat.label === 'Utilization')
     if (utilizationStat) {
-      const value = parseInt(utilizationStat.value)
-      return isNaN(value) ? 0 : value
+      // Remove any non-numeric characters (like %) and parse
+      const value = parseFloat(utilizationStat.value.toString().replace(/[^0-9.]/g, ''))
+      return isNaN(value) ? 0 : Math.round(value)
     }
     return 0
   }, [state.stats])

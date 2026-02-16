@@ -144,7 +144,7 @@ export async function transformPlcDataToDashboard() {
   const formattedLogRows = logRows.map((proc) => ({
     date: proc.endTime ? proc.endTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'N/A',
     batch: proc.processId || 'N/A',
-    length: `${proc.production?.fabricProcessed || proc.fabricProcessed || 0} m`,
+    length: `${(proc.production || proc.fabricProcessed || 0).toFixed(0)} m`,
     defects: 0, // TODO: Query defects for this process if needed
     status: 'OK'
   }))
